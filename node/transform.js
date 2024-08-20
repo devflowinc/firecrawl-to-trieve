@@ -2,8 +2,18 @@ import fs from 'fs';
 import { URL } from 'url';
 import cleaners from './cleaners.js';
 import MarkdownIt from 'markdown-it';
+import path from 'path';
 
 const markdown = new MarkdownIt();
+
+const CONFIGS = {
+  boost: true,
+  maxWords: 500,
+  maxDepth: 3,
+  semanticBoostDistanceFactor: 0.5,
+  fulltextBoostFactor: 5,
+  rootUrl: 'https://signoz.io/'
+};
 
 const crawlResultsFiles = fs.readdirSync('.')
   .filter(file => file.startsWith('crawl_results') && file.endsWith('.json'))
@@ -17,7 +27,7 @@ if (!crawlResultsFile) {
 }
 
 // Get the timestamp from the crawl results file name
-const TIMESTAMP = crawlResultsFile.split('_').slice(-1)[0].split('.')[0];
+const TIMESTAMP = crawlResultsFile.split('_').slice(-2).join('_').split('.')[0];
 
 const chunks = [];
 
@@ -62,7 +72,7 @@ function getChunkHtml(content, pageTitle, headingText, startIndex, chunkEnd) {
 
     // Skip heading-only chunks
     if (chunkHtml === `## ${headingText}`) {
-      return null;
+      return "HEADING_ONLY";
     }
 
     chunkHtml = `${pageTitle}: ${headingText}\n\n${chunkHtml.trim().replace(/^-+|-+$/g, '')}`;
@@ -105,7 +115,7 @@ function getChunkHtmlForHeadingMatch(pageMarkdown, pageTitle, matches, index) {
 
 function createChunk(chunkHtml, pageLink, headingLink, headingText, pageTagsSet, 
                      pageTitle, pageDescription) {
-  return {
+  const chunk = {
     chunk_html: chunkHtml,
     link: pageLink + headingLink,
     tags_set: pageTagsSet,
@@ -119,10 +129,24 @@ function createChunk(chunkHtml, pageLink, headingLink, headingText, pageTagsSet,
       page_description: pageDescription,
     }
   };
+
+  if (CONFIGS.boost) {
+    const boostPhrase = (pageTitle + " " + headingText).trim().replace(/^:\s+/, '');
+    chunk.semantic_boost = {
+      distance_factor: CONFIGS.semanticBoostDistanceFactor,
+      phrase: boostPhrase
+    };
+    chunk.fulltext_boost = {
+      boost_factor: CONFIGS.fulltextBoostFactor,
+      phrase: boostPhrase
+    };
+  }
+
+  return chunk;
 }
 
 function processContent(pageMarkdown, pageTitle, pageLink, pageTagsSet,
-                        pageDescription, maxWords = 500, maxDepth = 3) {
+                        pageDescription, maxWords = CONFIGS.maxWords, maxDepth = CONFIGS.maxDepth) {
   function splitContent(content, pattern) {
     const matches = content.match(new RegExp(pattern, 'g'));
     const sections = [];
@@ -141,10 +165,19 @@ function processContent(pageMarkdown, pageTitle, pageLink, pageTagsSet,
 
   function createChunks(sections, currentTitle = '', depth = 0) {
     const localChunks = [];
+    let lastChunkHeadingOnly = false;
     sections.forEach(([headingLink, headingText, sectionContent]) => {
+      if (lastChunkHeadingOnly) {
+        headingText = lastChunkHeadingOnly + " - " + headingText;
+        lastChunkHeadingOnly = false;
+      }
+
       const fullTitle = `${currentTitle}: ${headingText}`.replace(/^:\s+/, '');
       const chunkHtml = getChunkHtml(sectionContent, pageTitle, headingText, 0, null);
-      if (chunkHtml === null) return;
+      if (chunkHtml === "HEADING_ONLY") {
+        lastChunkHeadingOnly = headingText;
+        return;
+      }
 
       if (chunkHtml.split(/\s+/).length <= maxWords || depth >= maxDepth) {
         const chunk = createChunk(chunkHtml, pageLink, headingLink, headingText,
@@ -212,9 +245,12 @@ function main() {
   });
 
   // Save the chunks data to chunks.json
-  fs.writeFileSync('chunks.json', JSON.stringify(chunks, null, 2));
+  const chunkFilename = CONFIGS.boost ? 
+    `chunks_${TIMESTAMP}_boost.json` : 
+    `chunks_${TIMESTAMP}.json`;
+  fs.writeFileSync(chunkFilename, JSON.stringify(chunks, null, 2));
 
-  console.log(`Saved ${chunks.length} chunks to chunks.json`);
+  console.log(`Saved ${chunks.length} chunks to ${chunkFilename}`);
 
   // Generate chunks.md
   const chunksMarkdown = chunks.map(chunk => 

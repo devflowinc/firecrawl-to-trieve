@@ -1,4 +1,4 @@
-"""Load chunks.json to Trieve"""
+"""Load chunks to Trieve"""
 
 import sys
 import json
@@ -8,12 +8,15 @@ from typing import List, Dict, Any
 from tqdm import tqdm
 import logging
 import dotenv
-from transform_chunks import get_tracking_id
 
 dotenv.load_dotenv()
 
 BATCH_SIZE = 120
-DATASET_NAME = "TRIEVE_DATASET_ID_BASELINE"
+# DATASET_NAME = "TRIEVE_DATASET_ID_BASELINE"
+# CHUNK_FILENAME = "chunks.json"
+
+DATASET_NAME = "TRIEVE_DATASET_ID_BOOST"
+CHUNK_FILENAME = max([f for f in os.listdir() if f.startswith('chunks') and f.endswith('boost.json')], key=os.path.getctime)
 
 # Set up file handler for logging
 log_file = 'load.log'
@@ -31,7 +34,7 @@ logging.info(f"Logging to file: {log_file}")
 
 
 def read_chunks() -> List[Dict[str, Any]]:
-    with open('chunks.json', 'r') as f:
+    with open(CHUNK_FILENAME, 'r') as f:
         return json.load(f)
 
 def get_configuration() -> Dict[str, str]:

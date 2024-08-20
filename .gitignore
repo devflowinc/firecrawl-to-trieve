@@ -5,7 +5,7 @@
 .DS_Store
 
 # data
-*/chunks.json
+*/chunks*.json
 */groups.json
 */chunks.md
 */crawl_results*

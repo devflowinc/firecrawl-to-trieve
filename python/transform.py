@@ -5,6 +5,15 @@ import cleaners
 import markdown
 import os
 
+CONFIGS = {
+    'boost': True,
+    'max_words': 500,
+    'max_depth': 3,
+    'semantic_boost_distance_factor': 0.5,
+    'fulltext_boost_factor': 5,
+    'root_url': 'https://signoz.io/'
+}
+
 crawl_results_files = sorted(
     [f for f in os.listdir('.') if f.startswith('crawl_results') and f.endswith('.json')],
     reverse=True
@@ -21,7 +30,7 @@ with open(crawl_results_file, 'r') as f:
     crawl_results = json.load(f)
 
 # Get the timestamp from the crawl results file name
-TIMESTAMP = crawl_results_file.split('_')[-1].split('.')[0]
+TIMESTAMP = '_'.join(crawl_results_file.split('_')[-2:]).split('.')[0]
 
 chunks = []
 
@@ -42,7 +51,7 @@ def get_images(markdown):
 
 def get_tracking_id(url):
     # Strip leading elements:
-    url = url.replace('https://signoz.io/', '')
+    url = url.replace(CONFIGS['root_url'], '')
     # Replace multiple dashes with a single dash
     return url.replace('#', '-').replace(' ', '-').replace(':', '-').replace('/', '-').replace('--', '-').strip('-')
 
@@ -68,43 +77,12 @@ def get_chunk_html(content, page_title, headingtext, start_index, chunk_end):
     
     # Skip heading-only chunks
     if chunk_html == f"## {headingtext}":
-        return None
+        return "HEADING_ONLY"
 
     chunk_html = f"{page_title}: {headingtext}\n\n{chunk_html.strip().strip('-')}"
 
     return chunk_html
 
-def get_chunk_html_for_heading_match(page_markdown, page_title, matches, index):
-    matchstring, _, headingtext = matches[index]
-    current_match_index = page_markdown.index(matchstring)
-
-    if index == 0:
-        start_index = 0
-    else:
-        start_index = current_match_index
-
-    if index < len(matches) - 1:
-        next_match_index = page_markdown.index(matches[index + 1][0])
-        end_index = next_match_index
-    else:
-        end_index = None
-
-    # Check for potential issues and handle errors
-    try:
-        if start_index >= len(page_markdown):
-            raise ValueError(f"Start index {start_index} is out of bounds")
-        if end_index is not None:
-            if end_index > len(page_markdown):
-                raise ValueError(f"End index {end_index} is out of bounds")
-            if start_index >= end_index:
-                raise ValueError(f"Start index {start_index} is >= end index {end_index}")
-                
-        # If we reach here, indices are valid
-        return get_chunk_html(page_markdown, page_title, headingtext, start_index, 
-                              end_index)
-    except ValueError as e:
-        print(f"Error: {str(e)}")
-        raise e
 
 def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set, page_title, page_description):
     chunk = {
@@ -121,10 +99,21 @@ def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set,
             'page_description': page_description,
         }
     }
+    if CONFIGS['boost']:
+        boost_phrase = (page_title + " " + headingtext).strip(': ')
+        chunk['semantic_boost'] = {
+            "distance_factor": CONFIGS['semantic_boost_distance_factor'],
+            "phrase": boost_phrase
+        }
+        chunk['fulltext_boost'] = {
+            "boost_factor": CONFIGS['fulltext_boost_factor'],
+            "phrase": boost_phrase
+        }
+
     return chunk
 
 def process_content(page_markdown, page_title, page_link, page_tags_set,
-                    page_description, max_words=500, max_depth=3):
+                    page_description, max_words=CONFIGS['max_words'], max_depth=CONFIGS['max_depth']):
     def split_content(content, pattern):
         matches = re.findall(pattern, content, re.DOTALL)
         sections = []
@@ -137,10 +126,16 @@ def process_content(page_markdown, page_title, page_link, page_tags_set,
 
     def create_chunks(sections, current_title='', depth=0):
         local_chunks = []
+        last_chunk_heading_only = False
         for headinglink, headingtext, section_content in sections:
+            if last_chunk_heading_only:
+                headingtext = last_chunk_heading_only + " - " + headingtext
+                last_chunk_heading_only = False
+
             full_title = f"{current_title}: {headingtext}".strip(': ')
             chunk_html = get_chunk_html(section_content, page_title, headingtext, 0, None)
-            if chunk_html is None:
+            if chunk_html == "HEADING_ONLY":
+                last_chunk_heading_only = headingtext
                 continue
             
             if len(chunk_html.split()) <= max_words or depth >= max_depth:
@@ -205,10 +200,13 @@ def main():
 
 
     # Save the chunks data to chunks.json
-    with open('chunks.json', 'w') as f:
+    chunk_filename = f'chunks_{TIMESTAMP}.json'
+    if CONFIGS['boost']:
+        chunk_filename = f'chunks_{TIMESTAMP}_boost.json'
+    with open(chunk_filename, 'w') as f:
         json.dump(chunks, f, indent=2)
 
-    print(f"Saved {len(chunks)} chunks to chunks.json")
+    print(f"Saved {len(chunks)} chunks to {chunk_filename}")
 
     # Generate chunks.md
     with open('chunks.md', 'w') as f:
