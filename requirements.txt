@@ -1,0 +1,5 @@
+firecrawl-py==0.0.20
+python-dotenv==1.0.1
+requests==2.32.3
+tqdm==4.66.5
+urllib3==2.2.2

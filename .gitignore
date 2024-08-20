@@ -1,0 +1,17 @@
+# permissions
+.env
+
+# macOS
+.DS_Store
+
+# data
+chunks.json
+groups.json
+chunks.md
+crawl_results*
+
+# python
+.venv
+
+# logs
+*.log
