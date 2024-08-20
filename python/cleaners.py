@@ -116,6 +116,42 @@ def clean_multi_column_links(markdown_text):
 
     return cleaned_text.strip()
 
+def clean_extra_newlines_after_links(text):
+    """
+    This function addresses two common cases:
+    1. Removes a newline between a link and a period:
+        "[link text](https://example.com)\n.\n\n" => "[link text](https://example.com).\n\n"
+    2. Removes a newline immediately after a link:
+        "[link text](https://example.com)\n " => "[link text](https://example.com) "
+
+    Args:
+        text (str): The markdown text to clean.
+
+    Returns:
+        str: The cleaned markdown text with extra newlines after links removed.
+
+    Examples:
+        >>> text = "[link](https://example.com)\\n.\\n\\nNext paragraph."
+        >>> clean_extra_newlines_after_links(text)
+        '[link](https://example.com).\\n\\nNext paragraph.'
+
+        >>> text = "[link](https://example.com)\\n next words."
+        >>> clean_extra_newlines_after_links(text)
+        '[link](https://example.com) next words.'
+
+    Borderline case not affected:
+        >>> text = "[link](https://example.com)\\n\\nNext good paragraph."
+        >>> clean_extra_newlines_after_links(text)
+        '[link](https://example.com)\\n\\nNext good paragraph.'
+    """
+    # Remove newline between link and period
+    text = re.sub(r'(\[.*?\]\(.*?\))\n\.', r'\1.', text)
+    
+    # Remove newline immediately after link when it is followed by a space
+    text = re.sub(r'(\[.*?\]\(.*?\))\n (?=\S)', r'\1 ', text)
+    
+    return text
+
 
 if __name__ == "__main__":
     import doctest

@@ -12,11 +12,11 @@ import dotenv
 dotenv.load_dotenv()
 
 BATCH_SIZE = 120
-# DATASET_NAME = "TRIEVE_DATASET_ID_BASELINE"
-# CHUNK_FILENAME = "chunks.json"
+DATASET_NAME = "TRIEVE_DATASET_ID_BASELINE"
+CHUNK_FILENAME = max([f for f in os.listdir() if f.startswith('chunks') and f.endswith('.json') and not f.endswith('boost.json')], key=os.path.getctime)
 
-DATASET_NAME = "TRIEVE_DATASET_ID_BOOST"
-CHUNK_FILENAME = max([f for f in os.listdir() if f.startswith('chunks') and f.endswith('boost.json')], key=os.path.getctime)
+# DATASET_NAME = "TRIEVE_DATASET_ID_BOOST"
+# CHUNK_FILENAME = max([f for f in os.listdir() if f.startswith('chunks') and f.endswith('boost.json')], key=os.path.getctime)
 
 # Set up file handler for logging
 log_file = 'load.log'

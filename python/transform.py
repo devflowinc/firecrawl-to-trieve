@@ -6,7 +6,7 @@ import markdown
 import os
 
 CONFIGS = {
-    'boost': True,
+    'boost': False,
     'max_words': 500,
     'max_depth': 3,
     'semantic_boost_distance_factor': 0.5,
@@ -75,6 +75,7 @@ def get_chunk_html(content, page_title, headingtext, start_index, chunk_end):
     chunk_html = cleaners.clean_multi_column_links(chunk_html)
     chunk_html = cleaners.clean_double_newline_markdown_links(chunk_html)
     chunk_html = cleaners.clean_anchortag_headings(chunk_html)
+    chunk_html = cleaners.clean_extra_newlines_after_links(chunk_html)
     
     
     # Skip heading-only chunks
