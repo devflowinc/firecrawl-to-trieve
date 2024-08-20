@@ -3,8 +3,18 @@ import re
 from urllib.parse import urlparse
 import cleaners
 import markdown
+import os
 
-crawl_results_file = 'crawl_results_2024-08-19_16-04-07.json'
+crawl_results_files = sorted(
+    [f for f in os.listdir('.') if f.startswith('crawl_results') and f.endswith('.json')],
+    reverse=True
+)
+
+crawl_results_file = crawl_results_files[0] if crawl_results_files else ''
+
+if not crawl_results_file:
+    print('No crawl results file found')
+    exit(1)
 
 # Load the crawl results
 with open(crawl_results_file, 'r') as f:
