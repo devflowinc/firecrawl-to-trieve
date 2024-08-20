@@ -68,9 +68,55 @@ def remove_end_matter(text):
     return text
 
 
+def clean_multi_column_links(markdown_text):
+    """
+    Spread multi-column links in markdown text into a list format.
 
+    This function takes markdown text containing paragraphs with multiple links
+    and transforms them into a list format, with each link on a new line.
+
+    >>> markdown_text = "Some regular text in a paragraph.\\n\\n[Link 1\\\\n\\\\nDescription 1](/url1) [Link 2\\\\n\\\\nDescription 2](/url2)\\n\\nAnother paragraph with regular text."
+    >>> result = clean_multi_column_links(markdown_text)
+    >>> print(result)
+    Some regular text in a paragraph.
+    <BLANKLINE>
+    - [Link 1: Description 1](/url1)
+    - [Link 2: Description 2](/url2)
+    <BLANKLINE>
+    Another paragraph with regular text.
+    >>> markdown_text = "Send Application logs to SigNoz\\n-------------------------------\\n\\nThere are multiple ways in which you can send application logs to SigNoz\\n\\n[From log file\\\\n\\\\nRead logs from log file and push them to SigNoz](/docs/userguide/collect_logs_from_file) [Python logs Auto-Intrumentation\\\\n\\\\nCollect python logs using auto-instrumentation](/docs/userguide/python-logs-auto-instrumentation) [Using OpenTelemetry Python SDK\\\\n\\\\nSend application logs directly using OpenTelemetry Python SDK](/docs/userguide/collecting_application_logs_otel_sdk_python) [Using OpenTelemetry Java SDK\\\\n\\\\nSend application logs directly using OpenTelemetry Java SDK](/docs/userguide/collecting_application_logs_otel_sdk_java)"
+    >>> result = clean_multi_column_links(markdown_text)
+    >>> print(result)
+    Send Application logs to SigNoz
+    -------------------------------
+    <BLANKLINE>
+    There are multiple ways in which you can send application logs to SigNoz
+    <BLANKLINE>
+    - [From log file: Read logs from log file and push them to SigNoz](/docs/userguide/collect_logs_from_file)
+    - [Python logs Auto-Intrumentation: Collect python logs using auto-instrumentation](/docs/userguide/python-logs-auto-instrumentation)
+    - [Using OpenTelemetry Python SDK: Send application logs directly using OpenTelemetry Python SDK](/docs/userguide/collecting_application_logs_otel_sdk_python)
+    - [Using OpenTelemetry Java SDK: Send application logs directly using OpenTelemetry Java SDK](/docs/userguide/collecting_application_logs_otel_sdk_java)
+    """
+    link_pattern = r'(\n\n)(\[(?:[^\]]+\\\s*)+[^\]]+\]\([^\)]+\)(?:\s*\[(?:[^\]]+\\\s*)+[^\]]+\]\([^\)]+\))*)\s*(?=$|\n\n)'
+    
+    def clean_links(match):
+        links = re.findall(r'\[([^\]]+)\]\(([^\)]+)\)', match.group(2))
+        cleaned_links = []
+        for link_text, link_url in links:
+            clean_text = link_text.replace(r'\n\n', ': ').replace('\n', ' ').strip()
+            # Replace "\ \ " with ": "
+            clean_text = clean_text.replace(r'\ \ ', ': ')
+            cleaned_links.append(f"- [{clean_text}]({link_url})")
+        return match.group(1) + '\n'.join(cleaned_links).strip()
+
+    # Replace matching paragraphs with cleaned links
+    cleaned_text = re.sub(link_pattern, clean_links, markdown_text, flags=re.DOTALL)
+
+    
+
+    return cleaned_text.strip()
 
 
 if __name__ == "__main__":
     import doctest
-    doctest.testmod(verbose=True)
+    doctest.testmod()

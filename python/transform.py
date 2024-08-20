@@ -72,8 +72,10 @@ def get_chunk_html(content, page_title, headingtext, start_index, chunk_end):
         chunk_html = f"Error processing chunk: {str(e)}"
         raise e
 
+    chunk_html = cleaners.clean_multi_column_links(chunk_html)
     chunk_html = cleaners.clean_double_newline_markdown_links(chunk_html)
     chunk_html = cleaners.clean_anchortag_headings(chunk_html)
+    
     
     # Skip heading-only chunks
     if chunk_html == f"## {headingtext}":
@@ -185,7 +187,8 @@ def main():
 
         # If the page is less than 500 words, then make one chunk for the page (baseline)
         if len(page_markdown.split(" ")) < 500:
-            chunk = create_chunk(page_markdown, page_link, '', '', page_tags_set, page_title, page_description)
+            chunk_html = get_chunk_html(page_markdown, page_title, '', 0, None)
+            chunk = create_chunk(chunk_html, page_link, '', '', page_tags_set, page_title, page_description)
             chunks.append(chunk)
             continue
 
