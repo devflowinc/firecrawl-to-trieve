@@ -76,14 +76,14 @@ See the example: `example_crawl_results_2024-08-20T16-35-59.json`
 
 ### Transform: Cleaning, Chunking, and Configuring
 
-See cleaning scripts: `python/cleaners.py` and `node/transform_chunks.js`
+See cleaning scripts: `python/cleaners.py` and `node/cleaners.js`
 
 Run the transform scripts:
 
 In `python/`
 
 ```bash
-python transform_chunks.py
+python transform.py
 ```
 
 Or in `node/`
