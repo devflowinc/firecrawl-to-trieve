@@ -13,5 +13,8 @@ crawl_results*
 # python
 .venv
 
+# node
+node_modules
+
 # logs
 *.log
