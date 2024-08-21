@@ -84,35 +84,6 @@ function getChunkHtml(content, pageTitle, headingText, startIndex, chunkEnd) {
   }
 }
 
-function getChunkHtmlForHeadingMatch(pageMarkdown, pageTitle, matches, index) {
-  const [matchString, , headingText] = matches[index];
-  const currentMatchIndex = pageMarkdown.indexOf(matchString);
-
-  const startIndex = index === 0 ? 0 : currentMatchIndex;
-  const endIndex = index < matches.length - 1 ? 
-    pageMarkdown.indexOf(matches[index + 1][0]) : 
-    null;
-
-  try {
-    if (startIndex >= pageMarkdown.length) {
-      throw new Error(`Start index ${startIndex} is out of bounds`);
-    }
-    if (endIndex !== null) {
-      if (endIndex > pageMarkdown.length) {
-        throw new Error(`End index ${endIndex} is out of bounds`);
-      }
-      if (startIndex >= endIndex) {
-        throw new Error(`Start index ${startIndex} is >= end index ${endIndex}`);
-      }
-    }
-
-    return getChunkHtml(pageMarkdown, pageTitle, headingText, startIndex, endIndex);
-  } catch (e) {
-    console.error(`Error: ${e.message}`);
-    throw e;
-  }
-}
-
 function createChunk(chunkHtml, pageLink, headingLink, headingText, pageTagsSet, 
                      pageTitle, pageDescription) {
   const chunk = {
