@@ -6,7 +6,7 @@ Here is general approach:
 - get the results from Firecrawl
 - transform the results into chunks
 - load the chunks into Trieve
-- tentative: suggestions.py to pull suggested queries from Trieve and explore the retrieval results and the data.
+- tentative: suggestions.py to pull suggested queries from Trieve—via [/chunk/suggestions](https://docs.trieve.ai/api-reference/chunk/generate-suggested-queries)—and explore the retrieval results and the data (not discussed in the blog)
 
 ## Setup
 

@@ -76,18 +76,29 @@ def get_chunk_html(content, page_title, headingtext, start_index, chunk_end):
     chunk_html = cleaners.clean_double_newline_markdown_links(chunk_html)
     chunk_html = cleaners.clean_anchortag_headings(chunk_html)
     chunk_html = cleaners.clean_extra_newlines_after_links(chunk_html)
+    chunk_html = cleaners.clean_double_asterisk_whitespace_gaps(chunk_html)
+    
     
     
     # Skip heading-only chunks
-    if chunk_html == f"## {headingtext}":
-        return "HEADING_ONLY"
-
-    chunk_html = f"{page_title}: {headingtext}\n\n{chunk_html.strip().strip('-')}"
+    if len(chunk_html.strip().splitlines()) <= 1:
+        return {"HEADING_ONLY": chunk_html.strip()}
+    
+    
+    if headingtext == "":
+        chunk_html = f"{chunk_html.strip().strip('-')}"
+    else:
+        heading_line = f"{page_title}: {headingtext}"
+        chunk_html = chunk_html.replace(chunk_html.splitlines()[0], heading_line)
 
     return chunk_html
 
 
 def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set, page_title, page_description):
+    if page_title.endswith(f": {headingtext}"):
+        title = page_title
+    else: 
+        title = page_title + (': ' + headingtext if headingtext else '')
     chunk = {
         'chunk_html': chunk_html,
         'link': page_link+headinglink,
@@ -97,7 +108,7 @@ def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set,
         'group_tracking_ids': [get_tracking_id(page_link)],
         'timestamp': TIMESTAMP,
         'metadata': {
-            'title': page_title + ': ' + headingtext,
+            'title': title,
             'page_title': page_title,
             'page_description': page_description,
         }
@@ -117,9 +128,15 @@ def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set,
 
 def process_content(page_markdown, page_title, page_link, page_tags_set,
                     page_description, max_words=CONFIGS['max_words'], max_depth=CONFIGS['max_depth']):
-    def split_content(content, pattern):
+    def split_content(content, pattern, headingtext, headinglink):
         matches = re.findall(pattern, content, re.DOTALL)
+
         sections = []
+        if matches:
+            pre_split_content = content.split(matches[0][0])
+            if len(pre_split_content[0].strip()) > 0:
+                # sections contain: headinglink, headingtext, section_content
+                sections.append((headinglink, headingtext, pre_split_content[0]))
         for i, match in enumerate(matches):
             matchstring, headinglink, headingtext = match
             start = content.index(matchstring)
@@ -130,39 +147,47 @@ def process_content(page_markdown, page_title, page_link, page_tags_set,
     def create_chunks(sections, current_title='', depth=0):
         local_chunks = []
         last_chunk_heading_only = False
+        
         for headinglink, headingtext, section_content in sections:
             if last_chunk_heading_only:
                 headingtext = last_chunk_heading_only + " - " + headingtext
                 last_chunk_heading_only = False
 
-            full_title = f"{current_title}: {headingtext}".strip(': ')
+            full_title = (f"{current_title}: {headingtext}" if current_title != headingtext
+                          else headingtext).strip(': ')
             chunk_html = get_chunk_html(section_content, page_title, headingtext, 0, None)
-            if chunk_html == "HEADING_ONLY":
-                last_chunk_heading_only = headingtext
+            try:
+                last_chunk_heading_only = chunk_html["HEADING_ONLY"]
+            except TypeError:
+                last_chunk_heading_only = False
+            if last_chunk_heading_only:
                 continue
             
             if len(chunk_html.split()) <= max_words or depth >= max_depth:
                 # Create chunk if within word limit or max depth reached
                 chunk = create_chunk(chunk_html, page_link, headinglink, headingtext,
                                      page_tags_set, page_title, page_description)
+                if full_title.endswith(f"{headingtext}: {headingtext}"):
+                    full_title = full_title.replace(f": {headingtext}", "", 1)
                 chunk['metadata']['title'] = full_title
                 local_chunks.append(chunk)
             else:
                 # Try to split into subsections
-                subsections = split_content(section_content, r'(\n###+ \[\]\((#.*?)\))\n(.*?)\n')
+                subsections = split_content(section_content, r'(\n###+ \[\]\((#.*?)\))\n(.*?)\n', headingtext, headinglink)
                 if subsections:
-                    local_chunks.extend(create_chunks(subsections, full_title, depth + 1))
+                    local_chunks.extend(create_chunks(subsections,
+                                                      current_title=full_title,
+                                                      depth=depth + 1))
                 else:
                     # If no subsections, force create a chunk
                     chunk = create_chunk(chunk_html, page_link, headinglink, headingtext,
                                          page_tags_set, page_title, page_description)
-                    chunk['metadata']['title'] = full_title
                     local_chunks.append(chunk)
         return local_chunks
 
     # Start with top-level headings
-    top_sections = split_content(page_markdown, r'(\n\[\]\((#.*?)\))\n(.*?)\n')
-    return create_chunks(top_sections)
+    top_sections = split_content(page_markdown, r'(\n\[\]\((#.*?)\))\n(.*?)\n', "", "")
+    return create_chunks(top_sections, current_title=page_title)
 
 def main():
 

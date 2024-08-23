@@ -7,6 +7,8 @@
   "scripts": {
     "crawl": "node runFirecrawl.js",
     "transform": "node transform.js",
+    "load:create": "node load.js -create",
+    "load:upsert": "node load.js -upsert",
     "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js"
   },
   "dependencies": {

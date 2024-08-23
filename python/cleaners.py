@@ -116,6 +116,41 @@ def clean_multi_column_links(markdown_text):
 
     return cleaned_text.strip()
 
+def clean_double_asterisk_whitespace_gaps(text):
+    """
+    When double asterisks appear immediately before the start of a link,
+    they may appear after the link after a newline.
+    
+    Example:
+    ```
+    **[Use the all-in-one auto-instrumentation library(Recommended)](#using-the-all-in-one-auto-instrumentation-library)\n    **
+    ```
+
+    This function processes the entire text, replacing the whitespace before the second double asterisk pair
+    with an empty string.
+
+    Args:
+        text (str): The input text to clean
+
+    Returns:
+        str: The cleaned text
+
+    Examples:
+        >>> text = "**[Link text](#link-url)\\n    **"
+        >>> clean_double_asterisk_whitespace_gaps(text)
+        '**[Link text](#link-url)**'
+
+        >>> text = "Normal text **[Link text](#link-url)\\n    ** More text"
+        >>> clean_double_asterisk_whitespace_gaps(text)
+        'Normal text **[Link text](#link-url)** More text'
+
+        >>> text = "Unaffected **[Link](#url)** text"
+        >>> clean_double_asterisk_whitespace_gaps(text)
+        'Unaffected **[Link](#url)** text'
+    """
+    return re.sub(r'\*\*(\[.*?\]\(.*?\))\n\s*\*\*', r'**\1**', text)
+
+
 def clean_extra_newlines_after_links(text):
     """
     This function addresses two common cases:

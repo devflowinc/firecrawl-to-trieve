@@ -3,32 +3,14 @@ import { URL } from 'url';
 import cleaners from './cleaners.js';
 import MarkdownIt from 'markdown-it';
 import path from 'path';
+import configs from './firecrawl_to_trieve_config.js';
+
+const MOCK_MODE = false;
+
+// Use CONFIGS from firecrawl_to_trieve_config.js
+const CONFIGS = configs.CONFIGS;
 
 const markdown = new MarkdownIt();
-
-const CONFIGS = {
-  boost: true,
-  maxWords: 500,
-  maxDepth: 3,
-  semanticBoostDistanceFactor: 0.5,
-  fulltextBoostFactor: 5,
-  rootUrl: 'https://signoz.io/'
-};
-
-const crawlResultsFiles = fs.readdirSync('.')
-  .filter(file => file.startsWith('crawl_results') && file.endsWith('.json'))
-  .sort((a, b) => b.localeCompare(a));
-
-const crawlResultsFile = crawlResultsFiles[0] || '';
-
-if (!crawlResultsFile) {
-  console.error('No crawl results file found');
-  process.exit(1);
-}
-
-// Get the timestamp from the crawl results file name
-const TIMESTAMP = crawlResultsFile.split('_').slice(-2).join('_').split('.')[0];
-
 const chunks = [];
 
 function getTags(url) {
@@ -61,30 +43,40 @@ function getTrackingId(url) {
 
 function getChunkHtml(content, pageTitle, headingText, startIndex, chunkEnd) {
   try {
-    const chunkContent = chunkEnd !== null ? 
-      content.slice(startIndex, chunkEnd) : 
-      content.slice(startIndex);
-    let chunkText = chunkContent.split('\n').join('\n').trim().replace(/^-+|-+$/g, '');
-    let chunkHtml = chunkText.trim();
+      const chunkContent = chunkEnd !== null ?
+          content.slice(startIndex, chunkEnd) :
+          content.slice(startIndex);
+      let chunkText = chunkContent.split('\n').join('\n').trim().replace(/^-+|-+$/g, '');
+      let chunkHtml = chunkText.trim();
 
-    chunkHtml = cleaners.cleanDoubleNewlineMarkdownLinks(chunkHtml);
-    chunkHtml = cleaners.cleanAnchortagHeadings(chunkHtml);
+      chunkHtml = cleaners.cleanMultiColumnLinks(chunkHtml);
+      chunkHtml = cleaners.cleanAnchortagHeadings(chunkHtml);
+      chunkHtml = cleaners.cleanExtraNewlinesAfterLinks(chunkHtml);
+      chunkHtml = cleaners.cleanDoubleAsteriskWhitespaceGaps(chunkHtml);
+      chunkHtml = cleaners.cleanNewlineAndSpacesAfterLinks(chunkHtml);
+      
 
-    // Skip heading-only chunks
-    if (chunkHtml === `## ${headingText}`) {
-      return "HEADING_ONLY";
-    }
-
-    chunkHtml = `${pageTitle}: ${headingText}\n\n${chunkHtml.trim().replace(/^-+|-+$/g, '')}`;
-
-    return chunkHtml;
+      // Skip heading-only chunks
+      if (chunkHtml.trim().split('\n').length <= 1) {
+          return {"HEADING_ONLY": chunkHtml.trim()};
+      }
+  
+      if (headingText === "") {
+        chunkHtml = chunkHtml.trim().replace(/^-+|-+$/g, '');
+      } else {
+        const headingLine = `${pageTitle}: ${headingText}`;
+        const lines = chunkHtml.split('\n');
+        lines[0] = headingLine;
+        chunkHtml = lines.join('\n');
+      }
+      return chunkHtml;
   } catch (e) {
-    console.error(`Error processing chunk: ${e.message}`);
-    throw e;
+      console.error(`Error processing chunk: ${e.message}`);
+      throw e;
   }
 }
 
-function createChunk(chunkHtml, pageLink, headingLink, headingText, pageTagsSet, 
+function createChunkObject(chunkHtml, pageLink, headingLink, headingText, pageTagsSet, 
                      pageTitle, pageDescription) {
   const chunk = {
     chunk_html: chunkHtml,
@@ -93,16 +85,16 @@ function createChunk(chunkHtml, pageLink, headingLink, headingText, pageTagsSet,
     image_urls: getImages(chunkHtml),
     tracking_id: getTrackingId(pageLink + headingLink),
     group_tracking_ids: [getTrackingId(pageLink)],
-    timestamp: TIMESTAMP,
+    timestamp: CONFIGS.TIMESTAMP,
     metadata: {
-      title: pageTitle + ': ' + headingText,
+      title: pageTitle + (headingText.length > 0 ? ': ' + headingText : ''),
       page_title: pageTitle,
       page_description: pageDescription,
     }
   };
 
   if (CONFIGS.boost) {
-    const boostPhrase = (pageTitle + " " + headingText).trim().replace(/^:\s+/, '');
+    const boostPhrase = (pageTitle + " " + (headingText || '')).trim().replace(/^:\s+/, '');
     chunk.semantic_boost = {
       distance_factor: CONFIGS.semanticBoostDistanceFactor,
       phrase: boostPhrase
@@ -116,69 +108,137 @@ function createChunk(chunkHtml, pageLink, headingLink, headingText, pageTagsSet,
   return chunk;
 }
 
+export function headingMatches(content, pattern) {
+  const matches = Array.from(content.matchAll(pattern));
+  return matches.map(match => [
+    match[2], // headingLink
+    match[3], // headingText
+    match[0]  // heading symbols and link
+  ]);
+}
+
+export function splitContent(content, pattern) {
+    const matches = headingMatches(content, pattern);
+    const sections = [];
+
+    let preSplitContent = content;
+    if (matches.length > 0) {
+        let firstMatch = matches[0];
+
+        if (firstMatch) {
+            preSplitContent = content.split(firstMatch[2])[0];
+            if (preSplitContent.trim().length > 0) {
+                sections.push(["", "", preSplitContent]);
+            }
+        }
+    }
+
+    for (let i = 0; i < matches.length; i++) {
+        const match = matches[i];
+        const [headingLink, headingText, matchString] = match;
+        const start = content.indexOf(matchString);
+        let end;
+
+        if (i < matches.length - 1) {
+            end = content.indexOf(matches[i + 1][2]);
+        } else {
+            end = content.length;
+        }
+
+        if (start === -1 || end === -1) {
+            throw new Error('Invalid start or end index when splitting content');
+        }
+
+        sections.push([headingLink, headingText, content.slice(start, end)]);
+    }
+
+    return sections;
+}
+
 function processContent(pageMarkdown, pageTitle, pageLink, pageTagsSet,
                         pageDescription, maxWords = CONFIGS.maxWords, maxDepth = CONFIGS.maxDepth) {
-  function splitContent(content, pattern) {
-    const matches = content.match(new RegExp(pattern, 'g'));
-    const sections = [];
-    if (matches) {
-      matches.forEach((match, i) => {
-        const [, headingLink, headingText] = match.match(pattern);
-        const start = content.indexOf(match);
-        const end = i === matches.length - 1 ? 
-          content.length : 
-          content.indexOf(matches[i + 1]);
-        sections.push([headingLink, headingText, content.slice(start, end)]);
-      });
-    }
-    return sections;
-  }
 
+  
+
+  // Creates chunks from sections
   function createChunks(sections, currentTitle = '', depth = 0) {
     const localChunks = [];
-    let lastChunkHeadingOnly = false;
+    let isLastChunkHeadingOnly = false;
+
     sections.forEach(([headingLink, headingText, sectionContent]) => {
-      if (lastChunkHeadingOnly) {
-        headingText = lastChunkHeadingOnly + " - " + headingText;
-        lastChunkHeadingOnly = false;
+      if (isLastChunkHeadingOnly) {
+        headingText = `${isLastChunkHeadingOnly} - ${headingText}`;
+        isLastChunkHeadingOnly = false;
       }
-
-      const fullTitle = `${currentTitle}: ${headingText}`.replace(/^:\s+/, '');
+      
       const chunkHtml = getChunkHtml(sectionContent, pageTitle, headingText, 0, null);
-      if (chunkHtml === "HEADING_ONLY") {
-        lastChunkHeadingOnly = headingText;
-        return;
-      }
+      
 
-      if (chunkHtml.split(/\s+/).length <= maxWords || depth >= maxDepth) {
-        const chunk = createChunk(chunkHtml, pageLink, headingLink, headingText,
-                                  pageTagsSet, pageTitle, pageDescription);
-        chunk.metadata.title = fullTitle;
-        localChunks.push(chunk);
+      try {
+          isLastChunkHeadingOnly = chunkHtml["HEADING_ONLY"]
+      } catch (TypeError) {
+          isLastChunkHeadingOnly = false
+      }
+      if (isLastChunkHeadingOnly) {
+        return; // Skip to the next iteration
       } else {
-        const subsections = splitContent(sectionContent, 
-          /(\\n###+ \\[\\]\\((#.*?)\\))\\n(.*?)\\n/);
-        if (subsections.length > 0) {
-          localChunks.push(...createChunks(subsections, fullTitle, depth + 1));
-        } else {
-          const chunk = createChunk(chunkHtml, pageLink, headingLink, headingText,
-                                    pageTagsSet, pageTitle, pageDescription);
+
+        
+
+
+        const fullTitle = `${currentTitle}: ${headingText}`.replace(/^:\s+/, '');
+        const chunkWordCount = chunkHtml.split(/\s+/).length;
+        const isWithinChunkingConstrains = chunkWordCount <= maxWords || depth >= maxDepth;
+        // true if the chunk is within the word limit or we've reached max depth.
+        // we don't split further at max depth, even if over word limit
+
+        if (isWithinChunkingConstrains) {
+          // Create chunk if within word limit or max depth reached
+          let chunk = createChunkObject(chunkHtml, pageLink, headingLink, headingText,
+                                            pageTagsSet, pageTitle, pageDescription);
           chunk.metadata.title = fullTitle;
           localChunks.push(chunk);
+        } else {
+          // Try to split into subsections
+          const subsections = splitContent(sectionContent, 
+            /(\\n###+ \\[\\]\\((#.*?)\\))\\n(.*?)\\n/g);
+          // regex to find subsections of the current section
+          if (subsections.length > 0) {
+            localChunks.push(...createChunks(subsections, fullTitle, depth + 1));
+          } else {
+            // If no subsections, force create a chunk
+            let chunk = createChunkObject(chunkHtml, pageLink, headingLink, headingText,
+                                                pageTagsSet, pageTitle, pageDescription);
+            chunk.metadata.title = fullTitle;
+            localChunks.push(chunk);
+          }
         }
       }
     });
+
     return localChunks;
   }
 
-  const topSections = splitContent(pageMarkdown, /(\\n\\[\\]\\((#.*?)\\))\\n(.*?)\\n/);
-  return createChunks(topSections);
+  const topSections = splitContent(pageMarkdown, /(\n\[\]\((#.*?)\))\n(.*?)\n/g);
+  return createChunks(topSections, pageTitle);
 }
 
-function main() {
+async function main() {
+  // Choose dataset
+  const chosenDataset = await configs.chooseDataset();
+  const configuration = configs.getConfiguration(chosenDataset);
+
+  // Get the latest crawl results file
+  const { file: crawlResultsFile, timestamp: TIMESTAMP } = configs.getLatestCrawlFileAndTimestamp();
+
+  if (!crawlResultsFile) {
+    console.error('No crawl results file found');
+    process.exit(1);
+  }
+
   // Load the crawl results
   const crawlResults = JSON.parse(fs.readFileSync(crawlResultsFile, 'utf8'));
-
+  console.log(`Loaded ${crawlResults.length} crawl results from ${crawlResultsFile}`);
   // Iterate through each item in the crawl results
   crawlResults.forEach(item => {
     const url = item.metadata.ogUrl;
@@ -201,7 +261,7 @@ function main() {
 
     // If the page is less than 500 words, then make one chunk for the page (baseline)
     if (pageMarkdown.split(/\s+/).length < 500) {
-      chunks.push(createChunk(pageMarkdown, pageLink, '', '', pageTagsSet, 
+      chunks.push(createChunkObject(getChunkHtml(pageMarkdown, pageTitle, '', 0, null), pageLink, '', '', pageTagsSet, 
                               pageTitle, pageDescription));
     } else {
       // Otherwise, create subpage chunks 
@@ -210,15 +270,29 @@ function main() {
     }
   });
 
+  // strip ":" from title if it ends with it
+  chunks.forEach(chunk => {
+    chunk.metadata.title = chunk.metadata.title.replace(/:\s*$/, '');
+  });
+
   // render markdown to html
   chunks.forEach(chunk => {
     chunk.chunk_html = markdown.render(chunk.chunk_html);
+    // Replace <br> with <br />
+    chunk.chunk_html = chunk.chunk_html.replace(/<br>/g, '<br />');
+    // Replace <hr> with <hr />
+    chunk.chunk_html = chunk.chunk_html.replace(/<hr>/g, '<hr />');
+    // Replace <img ...> with <img ... />
+    chunk.chunk_html = chunk.chunk_html.replace(/<img\s+([^>]*)>/g, '<img $1 />');
   });
 
+  if (MOCK_MODE) {
+    console.log(`MOCK: Would generate ${chunks.length} chunks from ${crawlResultsFile}, saving to .json and .md files`);
+    return;
+  }
+
   // Save the chunks data to chunks.json
-  const chunkFilename = CONFIGS.boost ? 
-    `chunks_${TIMESTAMP}_boost.json` : 
-    `chunks_${TIMESTAMP}.json`;
+  const chunkFilename = `chunks_${TIMESTAMP}_${configuration.trieveDatasetName}.json`;
   fs.writeFileSync(chunkFilename, JSON.stringify(chunks, null, 2));
 
   console.log(`Saved ${chunks.length} chunks to ${chunkFilename}`);
@@ -234,9 +308,9 @@ function main() {
     '-'.repeat(80) + '\n\n'
   ).join('');
 
-  fs.writeFileSync('chunks.md', chunksMarkdown);
+  fs.writeFileSync(`chunks_${configuration.trieveDatasetName}.md`, chunksMarkdown);
 
-  console.log(`Generated chunks.md with ${chunks.length} entries`);
+  console.log(`Generated chunks_${configuration.trieveDatasetName}.md with ${chunks.length} entries`);
 }
 
 main();
