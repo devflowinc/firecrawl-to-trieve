@@ -94,7 +94,7 @@ def get_chunk_html(content, page_title, headingtext, start_index, chunk_end):
     return chunk_html
 
 
-def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set, page_title, page_description):
+def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tag_set, page_title, page_description):
     if page_title.endswith(f": {headingtext}"):
         title = page_title
     else: 
@@ -102,7 +102,7 @@ def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set,
     chunk = {
         'chunk_html': chunk_html,
         'link': page_link+headinglink,
-        'tags_set': page_tags_set,
+        'tag_set': page_tag_set,
         'image_urls': get_images(chunk_html),
         'tracking_id': get_tracking_id(page_link+headinglink),
         'group_tracking_ids': [get_tracking_id(page_link)],
@@ -126,7 +126,7 @@ def create_chunk(chunk_html, page_link, headinglink, headingtext, page_tags_set,
 
     return chunk
 
-def process_content(page_markdown, page_title, page_link, page_tags_set,
+def process_content(page_markdown, page_title, page_link, page_tag_set,
                     page_description, max_words=CONFIGS['max_words'], max_depth=CONFIGS['max_depth']):
     def split_content(content, pattern, headingtext, headinglink):
         matches = re.findall(pattern, content, re.DOTALL)
@@ -166,7 +166,7 @@ def process_content(page_markdown, page_title, page_link, page_tags_set,
             if len(chunk_html.split()) <= max_words or depth >= max_depth:
                 # Create chunk if within word limit or max depth reached
                 chunk = create_chunk(chunk_html, page_link, headinglink, headingtext,
-                                     page_tags_set, page_title, page_description)
+                                     page_tag_set, page_title, page_description)
                 if full_title.endswith(f"{headingtext}: {headingtext}"):
                     full_title = full_title.replace(f": {headingtext}", "", 1)
                 chunk['metadata']['title'] = full_title
@@ -181,7 +181,7 @@ def process_content(page_markdown, page_title, page_link, page_tags_set,
                 else:
                     # If no subsections, force create a chunk
                     chunk = create_chunk(chunk_html, page_link, headinglink, headingtext,
-                                         page_tags_set, page_title, page_description)
+                                         page_tag_set, page_title, page_description)
                     local_chunks.append(chunk)
         return local_chunks
 
@@ -206,7 +206,7 @@ def main():
         page_title = item['metadata']['ogTitle']
         page_description = item['metadata'].get('description', '')
         page_markdown = item['markdown']
-        page_tags_set = get_tags(url)
+        page_tag_set = get_tags(url)
 
         # Remove end matter
         page_markdown = cleaners.remove_end_matter(page_markdown)
@@ -214,13 +214,13 @@ def main():
         # If the page is less than 500 words, then make one chunk for the page (baseline)
         if len(page_markdown.split(" ")) < 500:
             chunk_html = get_chunk_html(page_markdown, page_title, '', 0, None)
-            chunk = create_chunk(chunk_html, page_link, '', '', page_tags_set, page_title, page_description)
+            chunk = create_chunk(chunk_html, page_link, '', '', page_tag_set, page_title, page_description)
             chunks.append(chunk)
             continue
 
         # Otherwise, create subpage chunks 
         chunks.extend(process_content(page_markdown, page_title, page_link,
-                                    page_tags_set, page_description))
+                                    page_tag_set, page_description))
 
 
     # render markdown to html
@@ -241,7 +241,7 @@ def main():
     with open('chunks.md', 'w') as f:
         for chunk in chunks:
             f.write(f"link: {chunk['link']}\n")
-            f.write(f"tag_set: {', '.join(chunk['tags_set'])}\n")
+            f.write(f"tag_set: {', '.join(chunk['tag_set'])}\n")
             f.write(f"image_urls: {', '.join(chunk['image_urls'])}\n")
             f.write(f"tracking_id: {chunk['tracking_id']}\n")
             f.write(f"group_tracking_ids: {', '.join(chunk['group_tracking_ids'])}\n")
