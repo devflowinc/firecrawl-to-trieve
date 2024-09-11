@@ -1,0 +1,21 @@
+[package]
+name = "rust_doc_chunker"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+pulldown-cmark = "0.9.2"
+rand = "0.8.5"
+regex = "1.10.6"
+
+[lib]
+name = "rust_doc_chunker_lib"
+path = "src/lib.rs"
+
+[[bin]]
+name = "rust_doc_chunker_bin"
+path = "src/main.rs"
+
+[[test]]
+name = "chunker_tests"
+path = "tests/chunker_tests.rs"
